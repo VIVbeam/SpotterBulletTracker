@@ -1,22 +1,12 @@
 # Spotter Bullet Tracker: Codebase Maintenance Guide
 
-This document is the technical architecture and maintenance reference for the **Spotter Bullet Tracker** mod for Arma 3.
+This document is the technical architecture and maintenance reference for SBT.
 
 ---
 
 ## 1. Architectural Overview
 
-Spotter Bullet Tracker is designed around a strictly client-to-client 1-to-1 sniper and spotter model.
-
 ```
-+-----------------------------------------------------------------------------------+
-|                              DEDICATED SERVER                                     |
-|                      Server CPU Footprint: 0.00 ms                                |
-|         (XEH_postInit.sqf exits immediately via !hasInterface check)              |
-+-----------------------------------------------------------------------------------+
-                                   |
-         Direct CBA Target Events  | (No publicVariable, no broadcast)
-                                   v
 +--------------------------+               +----------------------------------------+
 |      SHOOTER CLIENT      |               |             SPOTTER CLIENT             |
 |                          |               |                                        |
@@ -29,15 +19,7 @@ Spotter Bullet Tracker is designed around a strictly client-to-client 1-to-1 sni
 +--------------------------+               +----------------------------------------+
 ```
 
-### Key Principles
-1. **Zero Server Load**: All tracking, networking, and rendering occurs purely on player machines. Dedicated servers execute no tracking loops.
-2. **Strict 1-to-1 Pairing**: One spotter pairs to one shooter. If either unit changes role, dies, or disconnects, event handlers unhook cleanly.
-3. **Optics Gating**: The shooter only samples and sends bullet data when the spotter is actively aiming down sights (ADS) in authorized optics. When the spotter lowers their optics, the shooter skips projectile sampling entirely.
-4. **Draw3D Only When Active**: The expensive `Draw3D` mission event handler is attached only while looking through valid optics and removed the instant the spotter lowers the glass.
-
----
-
-## 2. Life Cycle of a Bullet Trace
+## 2. Bullet Trace
 
 ```
 1. TRIGGER PULL (Shooter)
@@ -153,105 +135,3 @@ _trace = [
     _impactTime         // 11: Number  - Local CBA_missionTime when impact occurred
 ];
 ```
-
----
-
-## 6. Mathematical Foundations
-
-### Catmull-Rom Cubic Spline Interpolation
-Raw projectile positions sampled at 50 Hz create segmented lines. To produce a smooth condensation trail, Catmull-Rom cubic splines interpolate 4 intermediate sub-points between each control point pair:
-
-$$p(u) = 0.5 \cdot \left[(-u^3 + 2u^2 - u)p_0 + (3u^3 - 5u^2 + 2)p_1 + (-3u^3 + 4u^2 + u)p_2 + (u^3 - u^2)p_3\right]$$
-
-Precomputed matrix weights in `sbt_splineWeights` evaluate this at fractional steps $u \in \{0.25, 0.50, 0.75, 1.00\}$ with pure vector math.
-
-### Frustum Dot-Product Culling
-Before iterating over trace segments, the camera view direction dot product tests whether points lie in front of the camera plane:
-
-$$\text{visible} = (P \cdot \vec{d}_{\text{cam}}) > (P_{\text{cam}} \cdot \vec{d}_{\text{cam}})$$
-
-If both the start and end of a trace fail this test, the entire trace is skipped.
-
-### Volumetric Billboard Ribbons
-To give the vapor trail 3D depth, ribbon flank vectors are calculated perpendicular to both the bullet's flight path chord $\vec{c}$ and the camera view vector $\vec{d}_{\text{cam}}$:
-
-$$\vec{n}_{\text{billboard}} = \frac{\vec{c} \times \vec{d}_{\text{cam}}}{\|\vec{c} \times \vec{d}_{\text{cam}}\|}$$
-
-Flank ribbons expand outward from the core over time and drift according to the local wind vector.
-
-### Impact Distance Calculation
-When the terminal impact occurs, the distance reading displayed next to the dot icon is computed from the shooter's rifle muzzle to the impact position:
-
-$$\text{distance} = \text{round}(\|\vec{pos}_{\text{impact}} - \vec{pos}_{\text{shooter}}\|)$$
-
-If the shooter object is unavailable, it gracefully falls back to the spotter's position.
-
----
-
-## 7. CBA Settings Reference
-
-All settings can be configured in-game via `Options -> Addon Options -> Spotter Bullet Tracker`:
-
-| Setting Key | Type | Default | Description |
-| --- | --- | --- | --- |
-| `sbt_enabled` | Checkbox | `true` | Master toggle for the entire mod. |
-| `sbt_maxTraces` | Slider | `4` | Cap on simultaneous traces drawn in Draw3D. |
-| `sbt_maxSpotterDist` | Slider | `15m` | Maximum allowed distance between spotter and shooter. |
-| `sbt_autoIncludeOptics` | Checkbox | `true` | Auto-enables all binoculars, rangefinders, and designators. |
-| `sbt_scopeVehicles` | Editbox | `"ACE_SpottingScopeObject"` | Extra static spotting scope vehicle/turret classes. |
-| `sbt_opticsList` | Editbox | Comma list | Extra handheld optic item classnames. |
-| `sbt_vaporColor` | Color | `[0.90, 0.93, 0.96]` | RGB color of the vapor condensation wake. |
-| `sbt_vaporAlpha` | Slider | `0.42` | Peak opacity of the vapor trail. |
-| `sbt_vaporLifetime` | Slider | `0.85s` | How long each vapor segment remains visible. |
-| `sbt_volumetricVapor` | Checkbox | `true` | Enables expanding 3D ribbons that drift with wind. |
-| `sbt_showImpactIcon` | Checkbox | `true` | Draws a 3D dot icon and distance reading on impact. |
-| `sbt_impactDuration` | Slider | `2.5s` | Visibility duration of the impact distance marker. |
-| `sbt_impactColor` | Color | `[1.0, 0.75, 0.20]` | RGB color of the impact icon and distance text. |
-| `sbt_enableMinLight` | Checkbox | `true` | Suppresses traces in pitch darkness without NVG/TI. |
-| `sbt_minLight` | Slider | `0.25` | Ambient light threshold required for daylight traces. |
-| `sbt_allowNVG` | Checkbox | `true` | Allows seeing traces through night vision goggles. |
-| `sbt_allowTI` | Checkbox | `false` | Allows seeing traces in thermal imaging mode. |
-
----
-
-## 8. Build and Maintenance Workflow
-
-The project uses [HEMTT](https://github.com/BrettMayson/HEMTT) for building, linting, and releasing.
-
-### Common Commands
-```powershell
-# Run the SQF and config linter
-hemtt check
-
-# Build test PBO into .hemttout/build
-hemtt build
-
-# Build production release ZIPs into releases/
-hemtt release
-
-# Build dev version and update symlink in Arma 3 directory
-hemtt dev
-```
-
-### Dev Symlink Setup
-When running `hemtt dev`, HEMTT automatically establishes a directory symlink:
-- **Target**: `D:\SteamLibrary\steamapps\common\Arma 3\z\sbt` -> `<repo>\.hemttout\dev`
-- Enable `-filePatching` in your Arma 3 launcher or startup parameters to load updated scripts without repacking PBOs.
-
----
-
-## 9. Troubleshooting and Edge Cases
-
-1. **Spotter sees no traces when shooter fires**:
-   - Verify spotter is within 15m of shooter (`sbt_maxSpotterDist`).
-   - Verify spotter is actively aiming down sights in binoculars, rangefinder, or spotting scope.
-   - Check ambient lighting: in nighttime missions, traces are suppressed unless NVG/TI is active or `sbt_enableMinLight` is false.
-   - Verify ammunition is a bullet (`BulletCore`) with muzzle velocity >= 350 m/s.
-
-2. **Impact icon position accuracy**:
-   - The impact position is captured by the engine's `HitPart` event handler directly on the bullet object.
-   - If a bullet travels beyond 3000m or flies for more than 8 seconds, the round is treated as despawned and impacts at its last recorded position.
-
-3. **Performance during high rate of fire**:
-   - If a shooter fires rapidly (e.g. DMR double-tap), `sbt_maxTraces` caps the maximum active traces in memory.
-   - The oldest completed trace is immediately dropped when a new shot arrives exceeding the cap.

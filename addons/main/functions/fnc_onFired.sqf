@@ -20,7 +20,7 @@ if (isNil "_isBullet") then {
 };
 if (!_isBullet) exitWith {};
 
-// Subsonic rounds (<350 m/s) do not produce supersonic condensation wakes
+// Check initial velocity
 private _initVel = velocity _projectile;
 if (vectorMagnitudeSqr _initVel < sbt_minVelocitySqr) exitWith {};
 
