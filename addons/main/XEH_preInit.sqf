@@ -16,12 +16,12 @@ sbt_showImpactIcon = true;
 sbt_impactDuration = 2.5;
 sbt_impactColor = [1.0, 0.75, 0.20];
 
-// Precomputed Catmull-Rom weights at u = 0.25, 0.50, 0.75, 1.00 avoid polynomial math per point
+// Precomputed cubic Hermite basis weights [h00, h10, h01, h11, u] at u = 0.25, 0.50, 0.75, 1.00
 sbt_splineWeights = [
-    [-0.046875, 0.890625, 0.171875, -0.015625, 0.25],
-    [-0.0625, 0.5625, 0.5625, -0.0625, 0.5],
-    [-0.015625, 0.171875, 0.890625, -0.046875, 0.75],
-    [0, 0, 1, 0, 1.0]
+    [0.84375, 0.140625, 0.15625, -0.046875, 0.25],
+    [0.5, 0.125, 0.5, -0.125, 0.5],
+    [0.15625, 0.046875, 0.84375, -0.140625, 0.75],
+    [0, 0, 1.0, 0, 1.0]
 ];
 
 #include "initSettings.inc.sqf"
